@@ -7,11 +7,11 @@ var details = function () { return ({
     style: {
         borderColor: 'orange',
     },
-    tags: '',
+    tags: 'audio',
     isStartPlugin: false,
     pType: '',
     sidebarPosition: 0,
-    icon: '',
+    icon: 'faQuestion',
     inputs: [],
     outputs: [
         {
