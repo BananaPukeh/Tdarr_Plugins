@@ -94,7 +94,7 @@ const plugin = async (args: IpluginInputArgs): Promise<IpluginOutputArgs> => {
   const workDir = getPluginWorkDir(args);
   const fileName = getFileName(inputFile);
   const container = getContainer(inputFile);
-  const outputFile = `${workDir}/${fileName}_branded.${container}`;
+  const outputFile = `${workDir}/${fileName}.${container}`;
 
   const extractionPromises = subtitleStreams.map(async (s, i) => {
     const ext = s.codec_name === 'subrip' ? 'srt' : 'ass';
@@ -113,14 +113,18 @@ const plugin = async (args: IpluginInputArgs): Promise<IpluginOutputArgs> => {
     const res = await extractCli.runCli();
     if (res.cliExitCode !== 0) throw new Error('Failed to extract subtitle');
     await insertBranding(subFile, s.codec_name, brandingText);
-    return subFile;
+    return {
+      file: subFile,
+      language: s.tags?.language,
+      title: s.tags?.title,
+    };
   });
 
   const subFiles = await Promise.all(extractionPromises);
 
   const ffArgs = ['-y', '-i', inputFile];
   subFiles.forEach((sub) => {
-    ffArgs.push('-i', sub);
+    ffArgs.push('-i', sub.file);
   });
   ffArgs.push('-map', '0');
   subtitleStreams.forEach((s) => {
@@ -129,7 +133,19 @@ const plugin = async (args: IpluginInputArgs): Promise<IpluginOutputArgs> => {
   subFiles.forEach((sub, idx) => {
     ffArgs.push('-map', `${idx + 1}:0`);
   });
-  ffArgs.push('-c', 'copy', outputFile);
+  ffArgs.push('-map_metadata', '0');
+  ffArgs.push('-c', 'copy');
+  const baseStreams = (args.inputFileObj.ffProbeData?.streams || [])
+    .filter((st) => !subtitleStreams.some((ss) => ss.index === st.index)).length;
+  subFiles.forEach((sub, idx) => {
+    if (sub.language) {
+      ffArgs.push(`-metadata:s:s:${String(baseStreams + idx)}`, `language=${sub.language}`);
+    }
+    if (sub.title) {
+      ffArgs.push(`-metadata:s:s:${String(baseStreams + idx)}`, `title=${sub.title}`);
+    }
+  });
+  ffArgs.push(outputFile);
 
   const muxCli = new CLI({
     cli: args.ffmpegPath,

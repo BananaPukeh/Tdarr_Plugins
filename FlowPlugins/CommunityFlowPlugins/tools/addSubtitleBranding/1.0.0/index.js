@@ -109,10 +109,10 @@ var insertBranding = function (filePath, codec, text) { return __awaiter(void 0,
     });
 }); };
 var plugin = function (args) { return __awaiter(void 0, void 0, void 0, function () {
-    var lib, brandingText, subtitleStreams, inputFile, workDir, fileName, container, outputFile, extractionPromises, subFiles, ffArgs, muxCli, muxRes;
-    var _a;
-    return __generator(this, function (_b) {
-        switch (_b.label) {
+    var lib, brandingText, subtitleStreams, inputFile, workDir, fileName, container, outputFile, extractionPromises, subFiles, ffArgs, baseStreams, muxCli, muxRes;
+    var _a, _b;
+    return __generator(this, function (_c) {
+        switch (_c.label) {
             case 0:
                 lib = require('../../../../../methods/lib')();
                 // eslint-disable-next-line no-param-reassign
@@ -140,11 +140,12 @@ var plugin = function (args) { return __awaiter(void 0, void 0, void 0, function
                 workDir = (0, fileUtils_1.getPluginWorkDir)(args);
                 fileName = (0, fileUtils_1.getFileName)(inputFile);
                 container = (0, fileUtils_1.getContainer)(inputFile);
-                outputFile = "".concat(workDir, "/").concat(fileName, "_branded.").concat(container);
+                outputFile = "".concat(workDir, "/").concat(fileName, ".").concat(container);
                 extractionPromises = subtitleStreams.map(function (s, i) { return __awaiter(void 0, void 0, void 0, function () {
                     var ext, subFile, extractCli, res;
-                    return __generator(this, function (_a) {
-                        switch (_a.label) {
+                    var _a, _b;
+                    return __generator(this, function (_c) {
+                        switch (_c.label) {
                             case 0:
                                 ext = s.codec_name === 'subrip' ? 'srt' : 'ass';
                                 subFile = "".concat(workDir, "/sub_").concat(i, ".").concat(ext);
@@ -161,22 +162,26 @@ var plugin = function (args) { return __awaiter(void 0, void 0, void 0, function
                                 });
                                 return [4 /*yield*/, extractCli.runCli()];
                             case 1:
-                                res = _a.sent();
+                                res = _c.sent();
                                 if (res.cliExitCode !== 0)
                                     throw new Error('Failed to extract subtitle');
                                 return [4 /*yield*/, insertBranding(subFile, s.codec_name, brandingText)];
                             case 2:
-                                _a.sent();
-                                return [2 /*return*/, subFile];
+                                _c.sent();
+                                return [2 /*return*/, {
+                                        file: subFile,
+                                        language: (_a = s.tags) === null || _a === void 0 ? void 0 : _a.language,
+                                        title: (_b = s.tags) === null || _b === void 0 ? void 0 : _b.title,
+                                    }];
                         }
                     });
                 }); });
                 return [4 /*yield*/, Promise.all(extractionPromises)];
             case 1:
-                subFiles = _b.sent();
+                subFiles = _c.sent();
                 ffArgs = ['-y', '-i', inputFile];
                 subFiles.forEach(function (sub) {
-                    ffArgs.push('-i', sub);
+                    ffArgs.push('-i', sub.file);
                 });
                 ffArgs.push('-map', '0');
                 subtitleStreams.forEach(function (s) {
@@ -185,7 +190,19 @@ var plugin = function (args) { return __awaiter(void 0, void 0, void 0, function
                 subFiles.forEach(function (sub, idx) {
                     ffArgs.push('-map', "".concat(idx + 1, ":0"));
                 });
-                ffArgs.push('-c', 'copy', outputFile);
+                ffArgs.push('-map_metadata', '0');
+                ffArgs.push('-c', 'copy');
+                baseStreams = (((_b = args.inputFileObj.ffProbeData) === null || _b === void 0 ? void 0 : _b.streams) || [])
+                    .filter(function (st) { return !subtitleStreams.some(function (ss) { return ss.index === st.index; }); }).length;
+                subFiles.forEach(function (sub, idx) {
+                    if (sub.language) {
+                        ffArgs.push("-metadata:s:s:".concat(String(baseStreams + idx)), "language=".concat(sub.language));
+                    }
+                    if (sub.title) {
+                        ffArgs.push("-metadata:s:s:".concat(String(baseStreams + idx)), "title=".concat(sub.title));
+                    }
+                });
+                ffArgs.push(outputFile);
                 muxCli = new cliUtils_1.CLI({
                     cli: args.ffmpegPath,
                     spawnArgs: ffArgs,
@@ -199,7 +216,7 @@ var plugin = function (args) { return __awaiter(void 0, void 0, void 0, function
                 });
                 return [4 /*yield*/, muxCli.runCli()];
             case 2:
-                muxRes = _b.sent();
+                muxRes = _c.sent();
                 if (muxRes.cliExitCode !== 0)
                     throw new Error('Failed to mux subtitles');
                 return [2 /*return*/, {
